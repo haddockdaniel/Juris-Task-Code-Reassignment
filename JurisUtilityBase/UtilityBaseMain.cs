@@ -148,24 +148,149 @@ namespace JurisUtilityBase
             // To run a T-SQL statement with no results, int RecordsAffected = _jurisUtility.ExecuteNonQueryCommand(0, SQL);
             // To get an ADODB.Recordset, ADODB.Recordset myRS = _jurisUtility.RecordsetFromSQL(SQL);
 
-            DialogResult dr = MessageBox.Show("This will change all Task code references from " + fromTaskCode + "\r\n" + "to " + toTaskCode + ". Are you sure?","Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-            if (dr == System.Windows.Forms.DialogResult.Yes)
+            DialogResult result = MessageBox.Show("This will change all Task code references from " + fromTaskCode + "\r\n" + "to " + toTaskCode + ". Are you sure?","Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (result == System.Windows.Forms.DialogResult.Yes)
             {
-                string SQL = "update ARFTaskAlloc set ARFTTaskCd ='" + toTaskCode + "' where ARFTTaskCd = '" + fromTaskCode + "'";
-                _jurisUtility.ExecuteNonQueryCommand(0, SQL);
                 UpdateStatus("Updating AR Fee Task and Billed Time...", 1, 8);
+                string SQL = "Select * from [ARFTaskAlloc] where ARFTActivityCd = '" + fromTaskCode + "'";
+                //one record at a time. If exists with same data but new act code, update and conbine. If not, update
+
+                DataSet fromArf = _jurisUtility.RecordsetFromSQL(SQL); // no matches so who cares
+                if (fromArf.Tables[0].Rows.Count > 0)
+                {
+                    foreach (DataRow dr in fromArf.Tables[0].Rows)
+                    {
+                        CompositKeyRecord record = new CompositKeyRecord();
+                        record = getARFTaskAllocDataSet(dr);
+                        SQL = "Select * from [ARFTaskAlloc] where ARFTTaskCd = '" + toTaskCode + "' and [ARFTBillNbr] = " + record.BillNo + " and [ARFTMatter] =" + record.Matter + " and [ARFTTkpr] = " + record.Tkpr + " and [ARFTActivityCd] = '" + record.ActCode + "'";
+
+                        DataSet matches = _jurisUtility.RecordsetFromSQL(SQL);
+                        if (matches.Tables[0].Rows.Count > 0) //we need to combine because key already exists
+                        {
+                            double WorkHrsBld = Double.Parse(matches.Tables[0].Rows[0]["ARFTWorkedHrsBld"].ToString().Trim());
+                            double HrsBld = Double.Parse(matches.Tables[0].Rows[0]["ARFTHrsBld"].ToString().Trim());
+                            double StdValueBld = Double.Parse(matches.Tables[0].Rows[0]["ARFTStdValueBld"].ToString().Trim());
+                            double ActualValueBld = Double.Parse(matches.Tables[0].Rows[0]["ARFTActualValueBld"].ToString().Trim());
+                            double ActualAmtBld = Double.Parse(matches.Tables[0].Rows[0]["ARFTActualAmtBld"].ToString().Trim());
+                            double Rcvd = Double.Parse(matches.Tables[0].Rows[0]["ARFTRcvd"].ToString().Trim());
+                            double Adj = Double.Parse(matches.Tables[0].Rows[0]["ARFTAdj"].ToString().Trim());
+                            double Pend = Double.Parse(matches.Tables[0].Rows[0]["ARFTPend"].ToString().Trim());
+                            //update record with correct task code
+                            SQL = "update ARFTaskAlloc set [ARFTWorkedHrsBld] = Cast(" + WorkHrsBld + " + " + record.WorkHrsBld + " as decimal(12,2)),[ARFTHrsBld] = Cast(" + HrsBld + " + " + record.HrsBld + " as decimal(12,2)),[ARFTStdValueBld] = Cast(" + StdValueBld + " + " + record.StdValueBld + " as decimal(12,2)),[ARFTActualValueBld] = Cast(" + ActualValueBld + " + " + record.ActualValueBld + " as decimal(12,2)),[ARFTActualAmtBld] = Cast(" + ActualAmtBld + " + " + record.ActualAmtBld + " as decimal(12,2)),[ARFTRcvd] = Cast(" + Rcvd + " + " + record.Rcvd + " as decimal(12,2)),[ARFTAdj] = Cast(" + Adj + " + " + record.Adj + " as decimal(12,2)),[ARFTPend] = Cast(" + Pend + " + " + record.Pend + " as decimal(12,2)) where ARFTTaskCd = '" + toTaskCode + "' and [ARFTBillNbr] = " + record.BillNo + " and [ARFTMatter] =" + record.Matter + " and [ARFTTkpr] = " + record.Tkpr + " and [ARFTActivityCd] = '" + record.ActCode + "'";
+                            _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+                            //delete record with old task code
+                            SQL = "delete from ARFTaskAlloc where ARFTTaskCd = '" + fromTaskCode + "' and [ARFTBillNbr] = " + record.BillNo + " and [ARFTMatter] =" + record.Matter + " and [ARFTTkpr] = " + record.Tkpr + " and [ARFTActivityCd] = '" + record.ActCode + "'";
+                            _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+                        }
+                        else //no match so we can just update
+                        {
+                            SQL = "update ARFTaskAlloc set ARFTTaskCd ='" + toTaskCode + "' where ARFTTaskCd = '" + fromTaskCode + "' and [ARFTBillNbr] = " + record.BillNo + " and [ARFTMatter] =" + record.Matter + " and [ARFTTkpr] = " + record.Tkpr + " and [ARFTActivityCd] = '" + record.ActCode + "'";
+                            _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+                        }
+
+                    }
+                }
+                fromArf.Clear();
+                
 
                 SQL = "update BilledTime set BTTaskCd ='" + toTaskCode + "' where BTTaskCd = '" + fromTaskCode + "'";
                 _jurisUtility.ExecuteNonQueryCommand(0, SQL);
                 UpdateStatus("Updating Cash Rec Fee Alloc...", 2, 8);
 
-                SQL = "update CRFeeAlloc set CRFTaskCd ='" + toTaskCode + "' where CRFTaskCd = '" + fromTaskCode + "'";
+                //fave and most recent
+                SQL = "delete from TaskCodeMostRecent where Code ='" + fromTaskCode + "'";
                 _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+
+                SQL = "delete from TaskCodeFavorite where Code ='" + fromTaskCode + "'";
+                _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+
+
+                SQL = "Select * from [CRFeeAlloc] where CRFActivityCd = '" + fromTaskCode + "'";
+                //one record at a time. If exists with same data but new act code, update and conbine. If not, update
+
+                fromArf = _jurisUtility.RecordsetFromSQL(SQL); // no matches so who cares
+                if (fromArf.Tables[0].Rows.Count > 0)
+                {
+                    foreach (DataRow dr in fromArf.Tables[0].Rows)
+                    {
+                        CompositKeyRecord record = new CompositKeyRecord();
+                        record = getCRFeeAllocDataSet(dr);
+                        SQL = "Select * from [CRFeeAlloc] where CRFTaskCd = '" + toTaskCode + "' and [CRFBillNbr] = " + record.BillNo + " and [CRFMatter] =" + record.Matter + " and [CRFTkpr] = " + record.Tkpr + " and [CRFActivityCd] = '" + record.ActCode + "' and CRFBatch = " + record.Batch + " and CRFRecNbr = " + record.Record;
+
+                        DataSet matches = _jurisUtility.RecordsetFromSQL(SQL);
+                        if (matches.Tables[0].Rows.Count > 0) //we need to combine because key already exists
+                        {
+                            double PrePost = Double.Parse(matches.Tables[0].Rows[0]["CRFPrePost"].ToString().Trim());
+                            double Amount = Double.Parse(matches.Tables[0].Rows[0]["CRFAmount"].ToString().Trim());
+                            //update record with correct task code
+                            SQL = "update CRFeeAlloc set [CRFPrePost] = Cast(" + PrePost + " + " + record.PrePost + " as decimal(12,2)),[CRFAmount] = Cast(" + Amount + " + " + record.Amount + " as decimal(12,2)) where CRFTaskCd = '" + fromTaskCode + "' and [CRFBillNbr] = " + record.BillNo + " and [CRFMatter] =" + record.Matter + " and [CRFTkpr] = " + record.Tkpr + " and [CRFActivityCd] = '" + record.ActCode + "' and CRFBatch = " + record.Batch + " and CRFRecNbr = " + record.Record;
+                            _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+                            //delete record with old task code
+                            SQL = "delete from CRFeeAlloc where CRFTaskCd = '" + fromTaskCode + "' and [CRFBillNbr] = " + record.BillNo + " and [CRFMatter] =" + record.Matter + " and [CRFTkpr] = " + record.Tkpr + " and [CRFActivityCd] = '" + record.ActCode + "' and CRFBatch = " + record.Batch + " and CRFRecNbr = " + record.Record;
+                            _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+                        }
+                        else //no match so we can just update
+                        {
+                            SQL = "update CRFeeAlloc set CRFTaskCd ='" + toTaskCode + "' where CRFTaskCd = '" + fromTaskCode + "' and [CRFBillNbr] = " + record.BillNo + " and [CRFMatter] =" + record.Matter + " and [CRFTkpr] = " + record.Tkpr + " and [CRFActivityCd] = '" + record.ActCode + "' and CRFBatch = " + record.Batch + " and CRFRecNbr = " + record.Record;
+                            _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+                        }
+
+                    }
+                }
+
+                fromArf.Clear();
                 UpdateStatus("Updating Fee Sum By Period...", 3, 8);
 
-                SQL = "update FeeSumByPrd set FSPTaskCd ='" + toTaskCode + "' where FSPTaskCd = '" + fromTaskCode + "'";
-                _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+
+
+
+                SQL = "Select * from [FeeSumByPrd] where FSPTaskCd = '" + fromTaskCode + "'";
+                //one record at a time. If exists with same data but new act code, update and conbine. If not, update
+
+                fromArf = _jurisUtility.RecordsetFromSQL(SQL); // no matches so who cares
+                if (fromArf.Tables[0].Rows.Count > 0)
+                {
+                    foreach (DataRow dr in fromArf.Tables[0].Rows)
+                    {
+                        CompositKeyRecord record = new CompositKeyRecord();
+                        record = getFeeSumByPrdDataSet(dr);
+                        SQL = "Select * from [FeeSumByPrd] where FSPTaskCd = '" + toTaskCode + "' and [FSPMatter] =" + record.Matter + " and [FSPTkpr] = " + record.Tkpr + " and [FSPActivityCd] = '" + record.ActCode + "' and FSPPrdYear = " + record.Year + " and FSPPrdNbr = " + record.Period;
+
+                        DataSet matches = _jurisUtility.RecordsetFromSQL(SQL);
+                        if (matches.Tables[0].Rows.Count > 0) //we need to combine because key already exists
+                        {
+                            double WorkedHrsBld = Double.Parse(matches.Tables[0].Rows[0]["FSPWorkedHrsBld"].ToString().Trim());
+                            double HrsBilled = Double.Parse(matches.Tables[0].Rows[0]["FSPHrsBilled"].ToString().Trim());
+                            double FeeBldStdValue = Double.Parse(matches.Tables[0].Rows[0]["FSPFeeBldStdValue"].ToString().Trim());
+                            double FeeBldActualValue = Double.Parse(matches.Tables[0].Rows[0]["FSPFeeBldActualValue"].ToString().Trim());
+                            double FeeBldActualAmt = Double.Parse(matches.Tables[0].Rows[0]["FSPFeeBldActualAmt"].ToString().Trim());
+                            double FeeReceived = Double.Parse(matches.Tables[0].Rows[0]["FSPFeeReceived"].ToString().Trim());
+                            double FeeAdjusted = Double.Parse(matches.Tables[0].Rows[0]["FSPFeeAdjusted"].ToString().Trim());
+                            double WorkedHrsEntered = Double.Parse(matches.Tables[0].Rows[0]["FSPWorkedHrsEntered"].ToString().Trim());
+                            double NonBilHrsEntered = Double.Parse(matches.Tables[0].Rows[0]["FSPNonBilHrsEntered"].ToString().Trim());
+                            double BilHrsEntered = Double.Parse(matches.Tables[0].Rows[0]["FSPBilHrsEntered"].ToString().Trim());
+                            double FeeEnteredStdValue = Double.Parse(matches.Tables[0].Rows[0]["FSPFeeEnteredStdValue"].ToString().Trim());
+                            double FeeEnteredActualValue = Double.Parse(matches.Tables[0].Rows[0]["FSPFeeEnteredActualValue"].ToString().Trim());
+                            //update record with correct task code
+                            SQL = "update FeeSumByPrd set [FSPWorkedHrsEntered] = Cast(" + WorkedHrsEntered + " + " + record.WorkedHrsEntered + " as decimal(12,2)) ,[FSPNonBilHrsEntered] = Cast(" + NonBilHrsEntered + " + " + record.NonBilHrsEntered + " as decimal(12,2)) ,[FSPBilHrsEntered] = Cast(" + BilHrsEntered + " + " + record.BilHrsEntered + " as decimal(12,2)) ,[FSPFeeEnteredStdValue] = Cast(" + FeeEnteredStdValue + " + " + record.FeeEnteredStdValue + " as decimal(12,2)) ,[FSPFeeEnteredActualValue] = Cast(" + FeeEnteredActualValue + " + " + record.FeeEnteredActualValue + " as decimal(12,2)),[FSPWorkedHrsBld] = Cast(" + WorkedHrsBld + " + " + record.WorkHrsBld + " as decimal(12,2)) ,[FSPHrsBilled] = Cast(" + HrsBilled + " + " + record.HrsBld + " as decimal(12,2)) ,[FSPFeeBldStdValue] = Cast(" + FeeBldStdValue + " + " + record.StdValueBld + " as decimal(12,2)) ,[FSPFeeBldActualValue] = Cast(" + FeeBldActualValue + " + " + record.ActualValueBld + " as decimal(12,2)) ,[FSPFeeBldActualAmt] = Cast(" + FeeBldActualAmt + " + " + record.ActualAmtBld + " as decimal(12,2)) ,[FSPFeeReceived] = Cast(" + FeeReceived + " + " + record.Rcvd + " as decimal(12,2)) ,[FSPFeeAdjusted] = Cast(" + FeeAdjusted + " + " + record.Adj + " as decimal(12,2)) where FSPTaskCd = '" + fromTaskCode + "' and [FSPMatter] =" + record.Matter + " and [FSPTkpr] = " + record.Tkpr + " and [FSPActivityCd] = '" + record.ActCode + "' and FSPPrdYear = " + record.Year + " and FSPPrdNbr = " + record.Period;
+                            _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+                            //delete record with old task code
+                            SQL = "delete from FeeSumByPrd where FSPTaskCd = '" + fromTaskCode + "' and [FSPMatter] =" + record.Matter + " and [FSPTkpr] = " + record.Tkpr + " and [FSPActivityCd] = '" + record.ActCode + "' and FSPPrdYear = " + record.Year + " and FSPPrdNbr = " + record.Period;
+                            _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+                        }
+                        else //no match so we can just update
+                        {
+                            SQL = "update FeeSumByPrd set FSPTaskCd ='" + toTaskCode + "' where FSPTaskCd = '" + fromTaskCode + "' and [FSPMatter] =" + record.Matter + " and [FSPTkpr] = " + record.Tkpr + " and [FSPActivityCd] = '" + record.ActCode + "' and FSPPrdYear = " + record.Year + " and FSPPrdNbr = " + record.Period;
+                            _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+                        }
+
+                    }
+                }
+                fromArf.Clear();
                 UpdateStatus("Updating Matter Fee Budget...", 4, 8);
+
+
+
 
                 SQL = "update MatterFeeBudget set MFBTaskCode ='" + toTaskCode + "' where MFBTaskCode = '" + fromTaskCode + "'";
                 _jurisUtility.ExecuteNonQueryCommand(0, SQL);
@@ -179,13 +304,45 @@ namespace JurisUtilityBase
                 _jurisUtility.ExecuteNonQueryCommand(0, SQL);
                 UpdateStatus("Updating Unbilled Time...", 7, 8);
 
+                //xref
+                SQL = "Select * from [TaskCodeXref] where TCXFirmsCode = '" + fromTaskCode + "'";
+
+                fromArf = _jurisUtility.RecordsetFromSQL(SQL); //if old code exists, we only need to check if new one does as well.
+                if (fromArf.Tables[0].Rows.Count > 0) // we have records from the old code so now we check if the new one exists
+                {
+                    foreach (DataRow dr in fromArf.Tables[0].Rows)
+                    {
+                        //see if the new key exists as well with the same TCXList ID
+                        string TCXList = dr["TCXList"].ToString().Trim();
+                        SQL = "select * from TaskCodeXref where TCXFirmsCode = '" + toTaskCode + "'";
+                        DataSet temp = _jurisUtility.RecordsetFromSQL(SQL);
+                        if (fromArf.Tables[0].Rows.Count > 0) //if new code also exists, delete the record with the old code
+                        {
+                            SQL = "delete from TaskCodeXref where TCXFirmsCode = '" + fromTaskCode + "' and TCXList = '" + TCXList + "'";
+                            _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+                        }
+                        //if the old code exists but the new one does not, update the old key to be the new key
+                        else
+                        {
+                            SQL = "update TaskCodeXref set TCXFirmsCode = '" + toTaskCode + "' where TCXList = '" + TCXList + "' and TCXFirmsCode = '" + fromTaskCode + "'";
+                            _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+                        }
+
+
+                    }
+                }//if the old one does not exist, we dont care
+
                 SQL = "update UnbilledTime set UTTaskCd ='" + toTaskCode + "' where UTTaskCd = '" + fromTaskCode + "'";
                 _jurisUtility.ExecuteNonQueryCommand(0, SQL);
                 UpdateStatus("All tables updated.", 8, 8);
 
-                //log tables?
-                //xref?
-                //fave and most recent?
+                /*
+                 * If a time entry uses a task code and the task code was assigned a Fee Schedule and the new Task Code either 
+                 * doesn’t have a Fee Schedule or has a different Fee Schedule then what will happen? Is this one of those 
+                 * only affects things going forward and not retroactively? The documentation said it’ll just change the code. 
+                 * So if it goes retroactively then this might need to be looked into.
+                 * Ask Kim. Christie says to delete maybe but not replace - TaskCodeRate
+                 */
 
                 MessageBox.Show("The process is complete", "Finished", MessageBoxButtons.OK, MessageBoxIcon.None);
                 toTaskCode = "";
@@ -193,6 +350,69 @@ namespace JurisUtilityBase
                 button1.Enabled = false;
             }
         }
+
+        private CompositKeyRecord getARFTaskAllocDataSet(DataRow dr)
+        {
+            CompositKeyRecord rec = new CompositKeyRecord();
+            rec.BillNo = dr["ARFTBillNbr"].ToString().Trim();
+            rec.Matter = dr["ARFTMatter"].ToString().Trim();
+            rec.Tkpr = dr["ARFTTkpr"].ToString().Trim();
+            rec.TaskCode = dr["ARFTTaskCd"].ToString().Trim();
+            rec.ActCode = dr["ARFTActivityCd"].ToString().Trim();
+            rec.WorkHrsBld = Double.Parse(dr["ARFTWorkedHrsBld"].ToString().Trim());
+            rec.HrsBld = Double.Parse(dr["ARFTHrsBld"].ToString().Trim());
+            rec.StdValueBld = Double.Parse(dr["ARFTStdValueBld"].ToString().Trim());
+            rec.ActualValueBld = Double.Parse(dr["ARFTActualValueBld"].ToString().Trim());
+            rec.ActualAmtBld = Double.Parse(dr["ARFTActualAmtBld"].ToString().Trim());
+            rec.Rcvd = Double.Parse(dr["ARFTRcvd"].ToString().Trim());
+            rec.Adj = Double.Parse(dr["ARFTAdj"].ToString().Trim());
+            rec.Pend = Double.Parse(dr["ARFTPend"].ToString().Trim());
+            return rec;
+        }
+
+        private CompositKeyRecord getCRFeeAllocDataSet(DataRow dr)
+        {
+            CompositKeyRecord rec = new CompositKeyRecord();
+            rec.BillNo = dr["CRFBillNbr"].ToString().Trim();
+            rec.Matter = dr["CRFMatter"].ToString().Trim();
+            rec.Tkpr = dr["CRFTkpr"].ToString().Trim();
+            rec.TaskCode = dr["CRFTaskCd"].ToString().Trim();
+            rec.ActCode = dr["CRFActivityCd"].ToString().Trim();
+            rec.Batch = dr["CRFBatch"].ToString().Trim();
+            rec.Record = dr["CRFRecNbr"].ToString().Trim();
+            rec.PrePost = Double.Parse(dr["CRFPrePost"].ToString().Trim());
+            rec.Amount = Double.Parse(dr["CRFAmount"].ToString().Trim());
+            return rec;
+        }
+
+        private CompositKeyRecord getFeeSumByPrdDataSet(DataRow dr)
+        {
+            CompositKeyRecord rec = new CompositKeyRecord();
+            rec.Year = dr["FSPPrdYear"].ToString().Trim();
+            rec.Matter = dr["FSPMatter"].ToString().Trim();
+            rec.Tkpr = dr["FSPTkpr"].ToString().Trim();
+            rec.TaskCode = dr["FSPTaskCd"].ToString().Trim();
+            rec.ActCode = dr["FSPActivityCd"].ToString().Trim();
+            rec.Period = dr["FSPPrdNbr"].ToString().Trim();
+            rec.WorkHrsBld = Double.Parse(dr["FSPWorkedHrsBld"].ToString().Trim());
+            rec.HrsBld = Double.Parse(dr["FSPHrsBilled"].ToString().Trim());
+            rec.StdValueBld = Double.Parse(dr["FSPFeeBldStdValue"].ToString().Trim());
+            rec.ActualValueBld = Double.Parse(dr["FSPFeeBldActualValue"].ToString().Trim());
+            rec.ActualAmtBld = Double.Parse(dr["FSPFeeBldActualAmt"].ToString().Trim());
+            rec.Rcvd = Double.Parse(dr["FSPFeeReceived"].ToString().Trim());
+            rec.Adj = Double.Parse(dr["FSPFeeAdjusted"].ToString().Trim());
+            rec.WorkedHrsEntered = Double.Parse(dr["FSPWorkedHrsEntered"].ToString().Trim());
+            rec.NonBilHrsEntered = Double.Parse(dr["FSPNonBilHrsEntered"].ToString().Trim());
+            rec.BilHrsEntered = Double.Parse(dr["FSPBilHrsEntered"].ToString().Trim());
+            rec.FeeEnteredStdValue = Double.Parse(dr["FSPFeeEnteredStdValue"].ToString().Trim());
+            rec.FeeEnteredActualValue = Double.Parse(dr["FSPFeeEnteredActualValue"].ToString().Trim());
+            return rec;
+        }
+
+
+
+
+
         private bool VerifyFirmName()
         {
             //    Dim SQL     As String
@@ -364,15 +584,6 @@ namespace JurisUtilityBase
                         " inner join employee on empsysnbr=billtobillingatty" +
                         " where empinitials<>'ABC'";
 
-
-            //if matter and originating timekeeper
-            else if (false)
-                reportSQL = "select Clicode, Clireportingname, Matcode, Matreportingname,empinitials as CurrentOriginatingTimekeeper, 'DEF' as NewOriginatingTimekeeper" +
-                    " from matter" +
-                    " inner join client on matclinbr=clisysnbr" +
-                    " inner join matorigatty on matsysnbr=morigmat" +
-                    " inner join employee on empsysnbr=morigatty" +
-                    " where empinitials<>'ABC'";
 
 
             return reportSQL;
