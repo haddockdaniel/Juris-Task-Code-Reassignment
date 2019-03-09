@@ -336,13 +336,13 @@ namespace JurisUtilityBase
                 _jurisUtility.ExecuteNonQueryCommand(0, SQL);
                 UpdateStatus("All tables updated.", 8, 8);
 
-                /*
-                 * If a time entry uses a task code and the task code was assigned a Fee Schedule and the new Task Code either 
-                 * doesn’t have a Fee Schedule or has a different Fee Schedule then what will happen? Is this one of those 
-                 * only affects things going forward and not retroactively? The documentation said it’ll just change the code. 
-                 * So if it goes retroactively then this might need to be looked into.
-                 * Ask Kim. Christie says to delete maybe but not replace - TaskCodeRate
-                 */
+                DialogResult dr1 = MessageBox.Show("Would you like to delete the Task Code?", "Deletion prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (dr1 == System.Windows.Forms.DialogResult.Yes)
+                {
+                    SQL = "delete from TaskCode where TaskCdCode = '" + fromTaskCode + "'";
+                    _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+                }
+
 
                 MessageBox.Show("The process is complete", "Finished", MessageBoxButtons.OK, MessageBoxIcon.None);
                 toTaskCode = "";
