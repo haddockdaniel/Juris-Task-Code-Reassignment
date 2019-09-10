@@ -195,6 +195,9 @@ namespace JurisUtilityBase
 
                 SQL = "update BilledTime set BTTaskCd ='" + toTaskCode + "' where BTTaskCd = '" + fromTaskCode + "'";
                 _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+
+                SQL = "update ExpenseEntry set TaskCode ='" + toTaskCode + "' where TaskCode = '" + fromTaskCode + "'";
+                _jurisUtility.ExecuteNonQueryCommand(0, SQL);
                 UpdateStatus("Updating Cash Rec Fee Alloc...", 2, 8);
 
                 //fave and most recent
@@ -294,6 +297,12 @@ namespace JurisUtilityBase
 
                 SQL = "update MatterFeeBudget set MFBTaskCode ='" + toTaskCode + "' where MFBTaskCode = '" + fromTaskCode + "'";
                 _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+
+                SQL = "update MatterExpBudget set MEBTaskCode ='" + toTaskCode + "' where MEBTaskCode = '" + fromTaskCode + "'";
+                _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+
+                SQL = "update ExpBatchDetail set EBDBudgTaskCd ='" + toTaskCode + "' where EBDBudgTaskCd = '" + fromTaskCode + "'";
+                _jurisUtility.ExecuteNonQueryCommand(0, SQL);
                 UpdateStatus("Updating Time Batch Detail...", 5, 8);
 
                 SQL = "update TimeBatchDetail set TBDTaskCd ='" + toTaskCode + "' where TBDTaskCd = '" + fromTaskCode + "'";
@@ -301,6 +310,12 @@ namespace JurisUtilityBase
                 UpdateStatus("Updating Time Entries...", 6, 8);
 
                 SQL = "update TimeEntry set TaskCode ='" + toTaskCode + "' where TaskCode = '" + fromTaskCode + "'";
+                _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+
+                SQL = "update VoucherBatchMatDist set VBMBudgTaskCd ='" + toTaskCode + "' where VBMBudgTaskCd = '" + fromTaskCode + "'";
+                _jurisUtility.ExecuteNonQueryCommand(0, SQL);
+
+                SQL = "update VoucherMatDist set VMBudgTaskCd ='" + toTaskCode + "' where VMBudgTaskCd = '" + fromTaskCode + "'";
                 _jurisUtility.ExecuteNonQueryCommand(0, SQL);
                 UpdateStatus("Updating Unbilled Time...", 7, 8);
 
